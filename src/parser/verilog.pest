@@ -1,0 +1,63 @@
+// Verilog/SystemVerilog grammar for verilog2vhdl
+
+// Whitespace (silent - automatically consumed between tokens)
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+
+// Comments
+LINE_COMMENT = { "//" ~ (!("\n" | "\r") ~ ANY)* }
+BLOCK_COMMENT = { "/*" ~ (!( "*/") ~ ANY)* ~ "*/" }
+COMMENT = { LINE_COMMENT | BLOCK_COMMENT }
+
+// Keywords
+identifier = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_" )* }
+parameter_name = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_" )* }
+
+// Numbers
+number_literal = @{ ("0" ~ ("b" | "B") ~ ASCII_HEX_DIGIT+) 
+                 | ("0" ~ ("h" | "H") ~ ASCII_HEX_DIGIT+)
+                 | ("0" ~ ("o" | "O") ~ ASCII_DIGIT+)
+                 | ("0" ~ ("d" | "D") ~ ASCII_DIGIT+)
+                 | ASCII_DIGIT+ }
+
+// Port direction keywords - atomic to avoid whitespace issues
+port_direction = @{ "input" | "output" | "inout" 
+                 | "ref" | "const ref" | "inout ref" | "output ref" }
+
+// Port type keywords - atomic to avoid whitespace issues
+port_type = @{ "wire" | "reg" | "logic" | "wand" | "tri" | "triand" | "trior" 
+            | "tri0" | "tri1" | "supply0" | "supply1" }
+
+// Dimension [MSB:LSB] - atomic to prevent whitespace consumption between parts
+dimension = @{ "[" ~ dimension_expr ~ ":" ~ dimension_expr ~ "]" }
+dimension_expr = @{ ASCII_ALPHANUMERIC | "_" | "-" }
+
+// Port: direction [type] [dimensions] name
+port_decl = { port_direction ~ port_type? ~ dimension* ~ identifier }
+
+// Port list
+port_list = { "(" ~ (port_decl ~ ("," ~ port_decl)*)? ~ ")" }
+
+// Parameter value
+parameter_value = @{ number_literal | identifier | ("(" ~ parameter_value ~ ")") }
+
+// Parameter declaration
+parameter_decl = { "parameter" ~ parameter_name ~ "=" ~ parameter_value }
+
+// Module parameters
+module_parameters = { "#" ~ "(" ~ parameter_list ~ ")" }
+
+// Parameter list
+parameter_list = { ("{" ~ parameter_decl ~ ("," ~ parameter_decl)* ~ "}") 
+                | (parameter_decl ~ ("," ~ parameter_decl)* ) }
+
+// Module header
+module_header = { "module" ~ identifier ~ module_parameters? ~ port_list }
+
+// Module end
+module_end = { "endmodule" | "end" }
+
+// Module definition - skip internal content
+module_def = { SOI ~ module_header ~ (!"endmodule" ~ !"end" ~ ANY)* ~ module_end ~ EOI }
+
+// File
+file = { SOI ~ module_def* ~ EOI }
