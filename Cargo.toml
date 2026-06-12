@@ -4,7 +4,16 @@ version = "0.1.0"
 edition = "2021"
 description = "Convert Verilog/SystemVerilog modules to VHDL entities"
 
+[lib]
+name = "verilog2vhdl"
+path = "src/lib.rs"
+
+[[bin]]
+name = "verilog2vhdl"
+path = "src/main.rs"
+
 [dependencies]
 pest = "2.7"
 pest_derive = "2.7"
 thiserror = "1"
+clap = { version = "4", features = ["derive"] }

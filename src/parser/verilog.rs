@@ -325,6 +325,42 @@ pub fn parse(input: &str) -> Result<Vec<Module>, ParseError> {
 mod tests {
     use super::*;
 
+    fn print_tree(pair: pest::iterators::Pair<'_, Rule>, indent: usize) {
+        let spaces = " ".repeat(indent * 2);
+        let s = pair.as_span();
+        let line_no = s.start().to_string();
+        println!(
+            "{}{} [{}, end={}] str={:?}",
+            spaces,
+            format!("{:?}", pair.as_rule()),
+            line_no,
+            s.end(),
+            pair.as_str(),
+        );
+        for child in pair.into_inner() {
+            print_tree(child, indent + 1);
+        }
+    }
+
+    #[test]
+    fn debug_simple_adder_tree() {
+        let input = std::fs::read_to_string("examples/simple_adder.v").unwrap();
+        println!("INPUT:\n{}", input);
+        println!("\nPARSE TREE:\n");
+        let result = VerilogParser::parse(Rule::file, &input);
+        match result {
+            Ok(pairs) => {
+                for p in pairs {
+                    print_tree(p, 0);
+                }
+            }
+            Err(e) => {
+                println!("ERROR: {}", e);
+            }
+        }
+        // We don't assert — just print for debugging
+    }
+
     #[test]
     fn test_simple_module() {
         let input = "module adder(input a, input b, output sum); assign sum = a + b; endmodule";
@@ -479,8 +515,8 @@ mod tests {
 
     #[test]
     fn test_end_keyword() {
-        // Verilog allows 'end' instead of 'endmodule'
-        let input = "module short_end(input a, output b); end";
+        // Verilog-2001 uses 'endmodule' as module terminator
+        let input = "module short_end(input a, output b); endmodule";
         let modules = parse(input).unwrap();
         assert_eq!(modules[0].name, "short_end");
         assert_eq!(modules[0].ports.len(), 2);

@@ -21,18 +21,10 @@ fn library_clauses() -> String {
     "library ieee;\nuse ieee.std_logic_1164.all;\nuse ieee.numeric_std.all;".to_string()
 }
 
-/// Convert a complete Verilog Module AST to a VHDL entity + architecture stub
-pub fn module_to_vhdl(module: &Module) -> String {
+/// Generate just the entity declaration (no library/use, no architecture stub)
+pub fn entity_only(module: &Module) -> String {
     let mut output = String::new();
 
-    // Library clauses
-    output.push_str(&library_clauses());
-    output.push('\n');
-
-    // Blank line before entity
-    output.push('\n');
-
-    // Entity declaration
     output.push_str(&format!("entity {} is\n", module.name));
 
     // Generics (from parameters)
@@ -41,7 +33,7 @@ pub fn module_to_vhdl(module: &Module) -> String {
         for (i, param) in module.parameters.iter().enumerate() {
             let decl = param_to_vhdl(param);
             if i < module.parameters.len() - 1 {
-                output.push_str(&format!("        {},\n", decl));
+                output.push_str(&format!("        {};\n", decl));
             } else {
                 output.push_str(&format!("        {}\n", decl));
             }
@@ -62,13 +54,29 @@ pub fn module_to_vhdl(module: &Module) -> String {
         };
         let decl = port_to_vhdl(port);
         if i < module.ports.len() - 1 {
-            output.push_str(&format!("{}        {},\n", comment, decl));
+            output.push_str(&format!("{}        {};\n", comment, decl));
         } else {
             output.push_str(&format!("{}        {}\n", comment, decl));
         }
     }
     output.push_str("    );\n");
     output.push_str(&format!("end entity {};\n", module.name));
+
+    output
+}
+
+/// Convert a complete Verilog Module AST to a VHDL entity + architecture stub
+pub fn module_to_vhdl(module: &Module) -> String {
+    let mut output = String::new();
+
+    // Library clauses
+    output.push_str(&library_clauses());
+    output.push('\n');
+
+    // Blank line before entity
+    output.push('\n');
+
+    output.push_str(&entity_only(module));
 
     // Architecture stub
     output.push('\n');

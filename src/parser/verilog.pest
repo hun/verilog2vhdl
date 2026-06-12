@@ -1,13 +1,12 @@
 // Verilog/SystemVerilog grammar for verilog2vhdl
 
-// Comments - silent, consumed with whitespace.
-// They are extracted from source text post-parse and associated by position.
-LINE_COMMENT = { "//" ~ (!("\n" | "\r") ~ ANY)* }
-BLOCK_COMMENT = { "/*" ~ (!("*/") ~ ANY)* ~ "*/" }
-COMMENT = _{ LINE_COMMENT | BLOCK_COMMENT }
+// Comments - NOT consumed by WHITESPACE; handled explicitly
+LINE_COMMENT = { "//" ~ (!( "\n" | "\r") ~ ANY)* }
+BLOCK_COMMENT = { "/*" ~ (!( "*/") ~ ANY)* ~ "*/" }
+COMMENT = { LINE_COMMENT | BLOCK_COMMENT }
 
-// Whitespace - silent, includes comments
-WHITESPACE = _{ " " | "\t" | "\r" | "\n" | COMMENT }
+// Whitespace only
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
 
 // Keywords
 identifier = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_" )* }
@@ -38,14 +37,13 @@ port_type = @{ "wire" | "reg" | "logic" | "wand" | "tri" | "triand" | "trior"
 
 // Dimension [MSB:LSB]
 dimension = @{ "[" ~ dimension_expr ~ ":" ~ dimension_expr ~ "]" }
-dimension_expr = @{ (ASCII_ALPHANUMERIC | "_" | "-" | "+")+ }
+dimension_expr = @{ (ASCII_ALPHANUMERIC | "_" | "-" | "+" | "*")+ }
 
-// Port declaration with optional leading comments
-// Comments are captured BEFORE the port direction keyword
+// Port declaration - leading comments explicitly handled
 port_decl = { COMMENT* ~ port_direction ~ port_type? ~ dimension* ~ identifier }
 
 // Port list (parenthesized) - comments can appear between ports
-port_list = { "(" ~ (port_decl ~ (COMMENT* ~ "," ~ port_decl)*)? ~ COMMENT* ~ ")" }
+port_list = { "(" ~ (port_decl ~ (COMMENT* ~ "," ~ port_decl)*)? ~ COMMENT* ~ ";"? ~ ")" }
 
 // Parameter value - atomic, matches any characters except delimiters
 parameter_value = @{ (!"," ~ !")" ~ !"=" ~ ANY)+ }
@@ -60,14 +58,15 @@ module_parameters = { "#" ~ "(" ~ parameter_list ~ ")" }
 parameter_list = { ("{" ~ parameter_decl ~ (("," ~ parameter_decl) | (";" ~ parameter_decl))* ~ "}")
                 | (parameter_decl ~ ("," ~ parameter_decl)* ) }
 
-// Module header with optional leading comments
-module_header = { COMMENT* ~ "module" ~ identifier ~ module_parameters? ~ port_list }
+// Module header with optional leading comments and optional semicolon
+module_header = { COMMENT* ~ "module" ~ identifier ~ module_parameters? ~ port_list ~ ";"? }
 
-// Module end
-module_end = { "endmodule" | "end" }
+// Module end keyword (Verilog-2001 standard)
+module_end_kw = { "endmodule" }
 
-// Module definition - body content between header and end
-module_def = { module_header ~ (COMMENT | !"endmodule" ~ !"end" ~ ANY)* ~ module_end }
+// Module definition - use a non-consuming approach for body
+// Body matches anything that is not the module_end keyword
+module_def = { module_header ~ (!module_end_kw ~ ANY)* ~ module_end_kw }
 
 // File can contain multiple modules
 file = { SOI ~ (module_def | COMMENT)* ~ EOI }
