@@ -1,63 +1,73 @@
 // Verilog/SystemVerilog grammar for verilog2vhdl
 
-// Whitespace (silent - automatically consumed between tokens)
-WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
-
-// Comments
+// Comments - silent, consumed with whitespace.
+// They are extracted from source text post-parse and associated by position.
 LINE_COMMENT = { "//" ~ (!("\n" | "\r") ~ ANY)* }
-BLOCK_COMMENT = { "/*" ~ (!( "*/") ~ ANY)* ~ "*/" }
-COMMENT = { LINE_COMMENT | BLOCK_COMMENT }
+BLOCK_COMMENT = { "/*" ~ (!("*/") ~ ANY)* ~ "*/" }
+COMMENT = _{ LINE_COMMENT | BLOCK_COMMENT }
+
+// Whitespace - silent, includes comments
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" | COMMENT }
 
 // Keywords
 identifier = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_" )* }
 parameter_name = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_" )* }
 
 // Numbers
-number_literal = @{ ("0" ~ ("b" | "B") ~ ASCII_HEX_DIGIT+) 
+number_literal = @{ ("0" ~ ("b" | "B") ~ ASCII_HEX_DIGIT+)
                  | ("0" ~ ("h" | "H") ~ ASCII_HEX_DIGIT+)
                  | ("0" ~ ("o" | "O") ~ ASCII_DIGIT+)
                  | ("0" ~ ("d" | "D") ~ ASCII_DIGIT+)
                  | ASCII_DIGIT+ }
 
-// Port direction keywords - atomic to avoid whitespace issues
-port_direction = @{ "input" | "output" | "inout" 
-                 | "ref" | "const ref" | "inout ref" | "output ref" }
+// Port direction keywords
+port_direction = @{ "input ref"
+                 | "output ref"
+                 | "inout ref"
+                 | "const ref"
+                 | "input"
+                 | "output"
+                 | "inout"
+                 | "ref" }
 
-// Port type keywords - atomic to avoid whitespace issues
-port_type = @{ "wire" | "reg" | "logic" | "wand" | "tri" | "triand" | "trior" 
-            | "tri0" | "tri1" | "supply0" | "supply1" }
+// Port type keywords
+port_type = @{ "wire" | "reg" | "logic" | "wand" | "tri" | "triand" | "trior"
+            | "tri0" | "tri1" | "supply0" | "supply1"
+            | "integer" | "time"
+            | "signed" | "unsigned" | "packed" }
 
-// Dimension [MSB:LSB] - atomic to prevent whitespace consumption between parts
+// Dimension [MSB:LSB]
 dimension = @{ "[" ~ dimension_expr ~ ":" ~ dimension_expr ~ "]" }
-dimension_expr = @{ ASCII_ALPHANUMERIC | "_" | "-" }
+dimension_expr = @{ (ASCII_ALPHANUMERIC | "_" | "-" | "+")+ }
 
-// Port: direction [type] [dimensions] name
-port_decl = { port_direction ~ port_type? ~ dimension* ~ identifier }
+// Port declaration with optional leading comments
+// Comments are captured BEFORE the port direction keyword
+port_decl = { COMMENT* ~ port_direction ~ port_type? ~ dimension* ~ identifier }
 
-// Port list
-port_list = { "(" ~ (port_decl ~ ("," ~ port_decl)*)? ~ ")" }
+// Port list (parenthesized) - comments can appear between ports
+port_list = { "(" ~ (port_decl ~ (COMMENT* ~ "," ~ port_decl)*)? ~ COMMENT* ~ ")" }
 
-// Parameter value
-parameter_value = @{ number_literal | identifier | ("(" ~ parameter_value ~ ")") }
+// Parameter value - atomic, matches any characters except delimiters
+parameter_value = @{ (!"," ~ !")" ~ !"=" ~ ANY)+ }
 
-// Parameter declaration
-parameter_decl = { "parameter" ~ parameter_name ~ "=" ~ parameter_value }
+// Parameter declaration with optional leading comments
+parameter_decl = { COMMENT* ~ "parameter" ~ parameter_name ~ "=" ~ parameter_value }
 
-// Module parameters
+// Module parameters: #( param1, param2 )
 module_parameters = { "#" ~ "(" ~ parameter_list ~ ")" }
 
-// Parameter list
-parameter_list = { ("{" ~ parameter_decl ~ ("," ~ parameter_decl)* ~ "}") 
+// Parameter list (supports both { param; param } and ( param, param ))
+parameter_list = { ("{" ~ parameter_decl ~ (("," ~ parameter_decl) | (";" ~ parameter_decl))* ~ "}")
                 | (parameter_decl ~ ("," ~ parameter_decl)* ) }
 
-// Module header
-module_header = { "module" ~ identifier ~ module_parameters? ~ port_list }
+// Module header with optional leading comments
+module_header = { COMMENT* ~ "module" ~ identifier ~ module_parameters? ~ port_list }
 
 // Module end
 module_end = { "endmodule" | "end" }
 
-// Module definition - skip internal content
-module_def = { SOI ~ module_header ~ (!"endmodule" ~ !"end" ~ ANY)* ~ module_end ~ EOI }
+// Module definition - body content between header and end
+module_def = { module_header ~ (COMMENT | !"endmodule" ~ !"end" ~ ANY)* ~ module_end }
 
-// File
-file = { SOI ~ module_def* ~ EOI }
+// File can contain multiple modules
+file = { SOI ~ (module_def | COMMENT)* ~ EOI }

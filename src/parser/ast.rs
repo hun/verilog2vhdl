@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // AST definitions for Verilog/SystemVerilog parsing
 
 use std::fmt;
@@ -69,6 +70,9 @@ pub enum PortType {
     Supply1,
     Integer,
     Time,
+    Signed,
+    Unsigned,
+    Packed,
 }
 
 impl fmt::Display for PortType {
@@ -87,6 +91,9 @@ impl fmt::Display for PortType {
             PortType::Supply1 => write!(f, "supply1"),
             PortType::Integer => write!(f, "integer"),
             PortType::Time => write!(f, "time"),
+            PortType::Signed => write!(f, "signed"),
+            PortType::Unsigned => write!(f, "unsigned"),
+            PortType::Packed => write!(f, "packed"),
         }
     }
 }
