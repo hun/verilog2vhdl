@@ -86,12 +86,11 @@ the entity ports into the kill ring."
               (setq result (buffer-string))))
           ;; Copy to kill ring — use vhdl-port-copy if available.
           (if (functionp 'vhdl-port-copy)
-              (let ((buf (get-buffer-create " *verilog2vhdl*")))
-                (with-current-buffer buf
-                  (vhdl-mode)
-                  (insert result)
-		  (beginning-of-buffer)
-                  (vhdl-port-copy)))
+              (with-temp-buffer
+                (vhdl-mode)
+                (insert result)
+                (beginning-of-buffer)
+                (vhdl-port-copy))
             (kill-new result))
           (message "Verilog converted to VHDL and copied to kill ring"))
       ;; Clean up: temp file.
