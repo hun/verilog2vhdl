@@ -2,6 +2,7 @@
 
 use clap::Parser;
 use std::fs;
+use std::io::{self, Read};
 use std::process;
 
 use verilog2vhdl::converter::{convert_to_entity_only, convert_to_vhdl};
@@ -12,8 +13,8 @@ use verilog2vhdl::parser::parse;
 #[command(name = "verilog2vhdl")]
 #[command(version, about = "Convert Verilog/SystemVerilog modules to VHDL entities", long_about = None)]
 struct Cli {
-    /// Input Verilog/SystemVerilog file (.v, .sv)
-    input: String,
+    /// Input Verilog/SystemVerilog file (.v, .sv) or '-' for stdin
+    input: Option<String>,
 
     /// Output VHDL file (default: stdout)
     #[arg(short, long)]
@@ -24,16 +25,37 @@ struct Cli {
     entity_only: bool,
 }
 
+fn read_input(cli: &Cli) -> String {
+    match &cli.input {
+        Some(path) if path == "-" => {
+            let mut buffer = String::new();
+            if let Err(e) = io::stdin().read_to_string(&mut buffer) {
+                eprintln!("Error reading stdin: {}", e);
+                process::exit(1);
+            }
+            buffer
+        }
+        Some(path) => match fs::read_to_string(path) {
+            Ok(content) => content,
+            Err(e) => {
+                eprintln!("Error reading '{}': {}", path, e);
+                process::exit(1);
+            }
+        },
+        None => {
+            let mut buffer = String::new();
+            if let Err(e) = io::stdin().read_to_string(&mut buffer) {
+                eprintln!("Error reading stdin: {}", e);
+                process::exit(1);
+            }
+            buffer
+        }
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
-
-    let input = match fs::read_to_string(&cli.input) {
-        Ok(content) => content,
-        Err(e) => {
-            eprintln!("Error reading '{}': {}", cli.input, e);
-            process::exit(1);
-        }
-    };
+    let input = read_input(&cli);
 
     let modules = match parse(&input) {
         Ok(mods) => mods,

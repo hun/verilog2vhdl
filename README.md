@@ -39,13 +39,14 @@ cargo install --path .
 ## CLI Usage
 
 ```
-verilog2vhdl <INPUT> [-o <OUTPUT>]
+verilog2vhdl [-o <OUTPUT>] [INPUT]
 
 Arguments:
-  <INPUT>     Input Verilog/SystemVerilog file (.v, .sv)
+  [INPUT]     Input Verilog/SystemVerilog file (.v, .sv) or '-' for stdin
 
 Options:
   -o, --output <OUTPUT>  Output VHDL file (default: stdout)
+  -e, --entity-only      Print only the VHDL entity (no library/use clauses, no architecture stub)
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -53,11 +54,19 @@ Options:
 ### Examples
 
 ```bash
-# Convert to stdout
+# Convert a file to stdout
 verilog2vhdl adder.v
 
 # Convert to a file
 verilog2vhdl module.sv -o module.vhd
+
+# Read from stdin (pipe or heredoc)
+echo 'module foo(input wire clk); endmodule' | verilog2vhdl
+verilog2vhdl - < my_design.v
+cat my_design.v | verilog2vhdl -o my_design.vhd
+
+# Entity-only (no library clauses or architecture stub)
+echo 'module bar(input wire [7:0] a, output wire [7:0] b); endmodule' | verilog2vhdl -e
 ```
 
 ## Library Usage
@@ -78,6 +87,47 @@ let input = std::fs::read_to_string("design.v")?;
 let modules = parse(&input)?;
 let vhdl = convert_to_vhdl(&modules);
 ```
+
+## Emacs Integration
+
+The included `verilog2vhdl.el` lets you convert Verilog code directly from Emacs without leaving the editor.
+
+### Setup
+
+Add the project directory to your `load-path`:
+
+```elisp
+(add-to-list 'load-path "/path/to/verilog2vhdl/")
+(require 'verilog2vhdl)
+```
+
+Optionally set the executable path explicitly to avoid PATH lookups:
+
+```elisp
+(setq verilog2vhdl-program "/path/to/verilog2vhdl/target/release/verilog2vhdl")
+```
+
+### Commands
+
+| Command | Description |
+|---|---|
+| `M-x verilog2vhdl-region` | Convert the selected region to VHDL |
+| `M-x verilog2vhdl-buffer` | Convert the entire current buffer |
+
+### Workflow
+
+1. Select a region of Verilog code (or call the buffer command).
+2. Run `M-x verilog2vhdl-region`.
+3. The VHDL output is copied to the kill ring — paste with `C-y` into any VHDL source buffer.
+4. The temporary buffer and temp file are cleaned up automatically.
+
+### `vhdl-port-copy`
+
+When `vhdl-mode` is loaded, the output is passed to `vhdl-port-copy` (which needs the cursor inside an entity declaration). To make this work, `--entity-only` is passed to `verilog2vhdl` so the temp buffer contains only the entity — no library clauses or architecture stub. The result is formatted as a port declaration ready to paste into an entity.
+
+If `vhdl-mode` is not loaded, the full VHDL output is placed on the kill ring via `kill-new`.
+
+With `C-u` prefix (`C-u M-x verilog2vhdl-region`), you are prompted for the path to the `verilog2vhdl` executable.
 
 ## Input Examples
 
@@ -133,10 +183,10 @@ use ieee.numeric_std.all;
 
 entity adder is
     port (
-        clk: in std_logic,
-        rst_n: in std_logic,
-        a: in std_logic_vector(7 downto 0),
-        b: in std_logic_vector(7 downto 0),
+        clk: in std_logic;
+        rst_n: in std_logic;
+        a: in std_logic_vector(7 downto 0);
+        b: in std_logic_vector(7 downto 0);
         sum: out std_logic_vector(7 downto 0)
     );
 end entity adder;
@@ -152,12 +202,12 @@ end architecture rtl;
 ```vhdl
 entity fifo is
     generic (
-        DATA_WIDTH : integer := 8,
+        DATA_WIDTH : integer := 8;
         ADDR_SIZE : integer := 4
     );
     port (
-        clk: in std_logic,
-        data_in: in std_logic_vector(DATA_WIDTH-1 downto 0),
+        clk: in std_logic;
+        data_in: in std_logic_vector(DATA_WIDTH-1 downto 0);
         count: out std_logic_vector(ADDR_SIZE-1 downto 0)
     );
 end entity fifo;
@@ -220,6 +270,7 @@ verilog2vhdl/
 │   └── cases/           # .v input + .vhd expected output pairs
 ├── examples/
 │   └── simple_adder.v
+├── verilog2vhdl.el      # Emacs integration (verilog2vhdl-region, verilog2vhdl-buffer)
 └── PLAN.md              # Implementation roadmap
 ```
 

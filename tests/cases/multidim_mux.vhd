@@ -4,7 +4,7 @@ use ieee.numeric_std.all;
 
 entity mux3d is
     generic (
-        N : integer := 8,
+        N : integer := 8;
         M : integer := 4
     );
     port (
