@@ -68,10 +68,10 @@ the entity ports into the kill ring."
     ;; (fn START END PROGRAM &optional DELETE BUFFER DISPLAY &rest ARGS)
     (with-temp-buffer
       (let ((exit-code
-             (apply #'call-process-region
-                    text nil executable
-                    nil (current-buffer)
-                    (if use-entity-only '("--entity-only")))))
+             (call-process-region
+              text nil executable
+              nil (current-buffer)
+              (if use-entity-only '("--entity-only")))))
         (unless (zerop exit-code)
           (user-error "verilog2vhdl exited with code %d" exit-code))
         (setq result (buffer-string))))
