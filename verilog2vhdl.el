@@ -13,7 +13,7 @@
 ;;
 ;; The converted VHDL is copied to the kill ring via vhdl-port-copy
 ;; (from vhdl-mode) so it can be pasted directly into a VHDL source
-;; buffer.  The temporary buffer is discarded automatically.
+;; buffer.  Input is fed via stdin (no temporary files).
 
 ;;; Commentary:
 ;;
@@ -38,7 +38,7 @@ Setting this to an absolute path avoids PATH lookup on every call."
   "Convert the Verilog text between START and END to VHDL.
 
 The VHDL output is copied to the kill ring so it can be pasted
-into any VHDL source buffer.  Any temporary files are cleaned up.
+into any VHDL source buffer.  Input is fed via stdin (no temp file).
 
 With a universal prefix argument (C-u), you are prompted for the
 path to the verilog2vhdl executable.
@@ -57,45 +57,34 @@ the entity ports into the kill ring."
      (list (point-min) (point-max))))
   (let* ((executable (or verilog2vhdl-program
                          (executable-find "verilog2vhdl")))
-         (text (buffer-substring-no-properties start end))
-         (tmp-file (make-temp-file "v2v-" nil ".v"))
          (use-entity-only (functionp 'vhdl-port-copy))
+         (result-buffer (generate-new-buffer " *v2v-result*" t))
          (result ""))
     (unless executable
       (error "verilog2vhdl not found — use C-u M-x verilog2vhdl-region to specify a path"))
-    (unwind-protect
-        (progn
-          ;; Write region text to the temp file (TMP-FILE).
-          (with-temp-buffer
-            (insert text)
-            (write-region nil nil tmp-file nil 0))
-          ;; Run verilog2vhdl: TMP-FILE as stdin, capture stdout.
-          ;; Pass --entity-only when vhdl-port-copy is available so the
-          ;; buffer contains only the entity declaration (vhdl-port-copy
-          ;; needs the cursor inside the entity).
-          (with-temp-buffer
-            (let ((exit-code
-                   (apply #'call-process
-                          executable
-                          tmp-file
-                          (current-buffer)
-                          t
-                          (when use-entity-only '("--entity-only")))))
-              (unless (zerop exit-code)
-                (user-error "verilog2vhdl exited with code %d" exit-code))
-              (setq result (buffer-string))))
-          ;; Copy to kill ring — use vhdl-port-copy if available.
-          (if (functionp 'vhdl-port-copy)
-              (with-temp-buffer
-                (vhdl-mode)
-                (insert result)
-                (beginning-of-buffer)
-                (vhdl-port-copy))
-            (kill-new result))
-          (message "Verilog converted to VHDL and copied to kill ring"))
-      ;; Clean up: temp file.
-      (when (file-exists-p tmp-file)
-        (delete-file tmp-file)))))
+    ;; Feed region via stdin (no temp file), capture stdout into the
+    ;; result buffer.  call-process-region uses the current buffer
+    ;; (this buffer) for region positions.
+    ;; (fn START END PROGRAM &optional DELETE BUFFER DISPLAY &rest ARGS)
+    (let ((exit-code
+           (apply #'call-process-region
+                  start end executable
+                  nil result-buffer
+                  (if use-entity-only '("--entity-only")))))
+      (unless (zerop exit-code)
+        (user-error "verilog2vhdl exited with code %d" exit-code))
+      (setq result (with-current-buffer result-buffer (buffer-string))))
+    (kill-buffer result-buffer)
+    ;; Copy to kill ring — use vhdl-port-copy if available.
+    (if (functionp 'vhdl-port-copy)
+        (with-temp-buffer
+          (vhdl-mode)
+          (insert result)
+          (beginning-of-buffer)
+	  (search-forward "entity")
+          (vhdl-port-copy))
+      (kill-new result))
+    (message "Verilog converted to VHDL and copied to kill ring")))
 
 (defun verilog2vhdl-buffer ()
   "Convert the entire current buffer from Verilog to VHDL.
