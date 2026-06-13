@@ -3,6 +3,7 @@ name = "verilog2vhdl"
 version = "0.1.0"
 edition = "2021"
 description = "Convert Verilog/SystemVerilog modules to VHDL entities"
+license = "MIT"
 
 [lib]
 name = "verilog2vhdl"

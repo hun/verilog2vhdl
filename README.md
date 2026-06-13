@@ -76,7 +76,7 @@ echo 'module bar(input wire [7:0] a, output wire [7:0] b); endmodule' | verilog2
 ```toml
 # Cargo.toml
 [dependencies]
-verilog2vhdl = { git = "https://github.com/your-org/verilog2vhdl.git" }
+verilog2vhdl = { git = "https://github.com/hun/verilog2vhdl.git" }
 ```
 
 ```rust
