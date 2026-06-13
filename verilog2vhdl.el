@@ -58,23 +58,23 @@ the entity ports into the kill ring."
   (let* ((executable (or verilog2vhdl-program
                          (executable-find "verilog2vhdl")))
          (use-entity-only (functionp 'vhdl-port-copy))
-         (result-buffer (generate-new-buffer " *v2v-result*" t))
+         (text (buffer-substring-no-properties start end))
          (result ""))
     (unless executable
       (error "verilog2vhdl not found — use C-u M-x verilog2vhdl-region to specify a path"))
-    ;; Feed region via stdin (no temp file), capture stdout into the
-    ;; result buffer.  call-process-region uses the current buffer
-    ;; (this buffer) for region positions.
+    ;; Feed region text via stdin (no temp file), capture stdout into
+    ;; the temp buffer.  When START is a string, call-process-region
+    ;; sends that string directly as stdin (END is ignored).
     ;; (fn START END PROGRAM &optional DELETE BUFFER DISPLAY &rest ARGS)
-    (let ((exit-code
-           (apply #'call-process-region
-                  start end executable
-                  nil result-buffer
-                  (if use-entity-only '("--entity-only")))))
-      (unless (zerop exit-code)
-        (user-error "verilog2vhdl exited with code %d" exit-code))
-      (setq result (with-current-buffer result-buffer (buffer-string))))
-    (kill-buffer result-buffer)
+    (with-temp-buffer
+      (let ((exit-code
+             (apply #'call-process-region
+                    text nil executable
+                    nil (current-buffer)
+                    (if use-entity-only '("--entity-only")))))
+        (unless (zerop exit-code)
+          (user-error "verilog2vhdl exited with code %d" exit-code))
+        (setq result (buffer-string))))
     ;; Copy to kill ring — use vhdl-port-copy if available.
     (if (functionp 'vhdl-port-copy)
         (with-temp-buffer
