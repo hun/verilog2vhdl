@@ -154,8 +154,9 @@ fn find_leading_comments(
     result
 }
 
-/// Parse a single port from its tokens, extracting leading comments from source
-fn parse_port_from_tokens(tokens: Vec<Pair<'_, Rule>>, comments: &[(usize, usize, String)], port_start: usize, source: &str) -> Port {
+/// Parse port tokens, extracting direction, type, dimensions, and all identifiers.
+/// Returns one Port per identifier found.
+fn parse_port_from_tokens(tokens: Vec<Pair<'_, Rule>>, comments: &[(usize, usize, String)], port_start: usize, source: &str) -> Vec<Port> {
     let mut iter = tokens.into_iter();
 
     // First token is the direction keyword
@@ -164,7 +165,7 @@ fn parse_port_from_tokens(tokens: Vec<Pair<'_, Rule>>, comments: &[(usize, usize
 
     let mut port_type: Option<PortType> = None;
     let mut dimensions = Vec::new();
-    let mut name = String::new();
+    let mut names = Vec::new();
 
     for token in iter {
         match token.as_rule() {
@@ -175,7 +176,7 @@ fn parse_port_from_tokens(tokens: Vec<Pair<'_, Rule>>, comments: &[(usize, usize
                 dimensions.push(parse_dimension(token));
             }
             Rule::identifier => {
-                name = pair_text(&token);
+                names.push(pair_text(&token));
             }
             Rule::port_direction => {
                 // Multi-word directions may have extra direction tokens
@@ -185,20 +186,25 @@ fn parse_port_from_tokens(tokens: Vec<Pair<'_, Rule>>, comments: &[(usize, usize
     }
 
     // Extract leading comments from source text based on position
-    let leading_comments = find_leading_comments(comments, port_start, source);
+    let _leading_comments = find_leading_comments(comments, port_start, source);
 
-    Port {
-        name,
-        direction,
-        port_type,
-        dimensions,
-        leading_comments,
-        inline_comment: None,
-        trailing_comments: Vec::new(),
-    }
+    // Create one Port per identifier
+    names
+        .into_iter()
+        .map(|name| Port {
+            name,
+            direction: direction.clone(),
+            port_type: port_type.clone(),
+            dimensions: dimensions.clone(),
+            leading_comments: Vec::new(), // will be set by caller
+            inline_comment: None,
+            trailing_comments: Vec::new(),
+        })
+        .collect()
 }
 
 /// Parse the port list, extracting comments from source text for each port
+/// and handling multiple variables per line (e.g., "input wire ACLK, ARESETN").
 fn parse_port_list(pair: &Pair<'_, Rule>, source: &str, comments: &[(usize, usize, String)]) -> Vec<Port> {
     let inner_pairs: Vec<Pair<'_, Rule>> = pair.clone().into_inner().collect();
 
@@ -208,17 +214,21 @@ fn parse_port_list(pair: &Pair<'_, Rule>, source: &str, comments: &[(usize, usiz
         if pp.as_rule() == Rule::port_decl {
             let tokens: Vec<Pair<'_, Rule>> = pp.clone().into_inner().collect();
             if !tokens.is_empty() {
-                // Use the actual byte position of the port_direction pair from the parse tree.
-                // This is more reliable than searching for the keyword text, because the
-                // port_decl span includes COMMENT tokens that would throw off offset math.
                 let port_direction_pair = tokens
                     .iter()
                     .find(|t| t.as_rule() == Rule::port_direction)
                     .expect("port_decl must have a port_direction token");
                 let port_start = port_direction_pair.as_span().start();
 
-                let port = parse_port_from_tokens(tokens, comments, port_start, source);
-                ports.push(port);
+                let mut port_list = parse_port_from_tokens(tokens, comments, port_start, source);
+
+                // Attach leading comments to each port
+                let leading_comments = find_leading_comments(comments, port_start, source);
+                for port in &mut port_list {
+                    port.leading_comments = leading_comments.clone();
+                }
+
+                ports.extend(port_list);
             }
         }
     }
@@ -264,20 +274,38 @@ fn parse_module_def(pair: Pair<'_, Rule>, source: &str, comments: &[(usize, usiz
                     // First tokens may be COMMENT tokens (leading comments)
                     let mut leading_comments = Vec::new();
                     let mut value_start = 0;
+                    let mut param_type: Option<String> = None;
+                    let mut dimensions: Vec<Dimension> = Vec::new();
+                    let mut seen_type = false;
                     for (i, token) in inner_tokens.iter().enumerate() {
                         if token.as_rule() == Rule::COMMENT {
                             leading_comments.push(parse_comment_text(token.as_str()));
+                        } else if !seen_type && token.as_rule() == Rule::parameter_type {
+                            param_type = Some(pair_text(token));
+                            seen_type = true;
+                        } else if seen_type && token.as_rule() == Rule::dimension {
+                            dimensions.push(parse_dimension(token.clone()));
                         } else {
                             value_start = i;
                             break;
                         }
                     }
                     let mut non_comment = inner_tokens.into_iter().skip(value_start);
+                    // Skip parameter_type if present
+                    if non_comment.clone().next().map(|t| t.as_rule() == Rule::parameter_type) == Some(true) {
+                        non_comment.next();
+                    }
+                    // Skip dimensions if present
+                    while non_comment.clone().next().map(|t| t.as_rule() == Rule::dimension) == Some(true) {
+                        non_comment.next();
+                    }
                     let pname = pair_text(&non_comment.next().unwrap());
                     let pvalue = pair_text(&non_comment.next().unwrap());
                     params.push(Parameter {
                         name: pname,
                         value: pvalue,
+                        param_type,
+                        dimensions,
                         leading_comments,
                     });
                 }
@@ -672,5 +700,82 @@ mod tests {
         let input = "// Just a comment\ndefault_nettype none\n/* block comment */";
         let modules = parse(input).unwrap();
         assert_eq!(modules.len(), 0);
+    }
+
+    // Issue 5: parameters with types
+    #[test]
+    fn test_typed_parameters_single() {
+        // Just one typed parameter to isolate the issue
+        let input = "module single_typed #(parameter int WIDTH = 8)(input clk); endmodule";
+        let modules = parse(input).unwrap();
+        assert_eq!(modules[0].parameters.len(), 1);
+        assert_eq!(modules[0].parameters[0].name, "WIDTH");
+        assert_eq!(modules[0].parameters[0].param_type, Some("int".to_string()));
+    }
+
+    #[test]
+    fn test_typed_parameters_two() {
+        let input = "module two_typed #(parameter int WIDTH = 8, parameter DEPTH = 16)(input clk); endmodule";
+        let modules = parse(input).unwrap();
+        assert_eq!(modules[0].parameters.len(), 2);
+        assert_eq!(modules[0].parameters[0].name, "WIDTH");
+        assert_eq!(modules[0].parameters[0].param_type, Some("int".to_string()));
+        assert_eq!(modules[0].parameters[1].name, "DEPTH");
+        assert_eq!(modules[0].parameters[1].param_type, None);
+    }
+
+    #[test]
+    fn test_typed_parameters() {
+        let input = "module typed_params #(parameter int WIDTH = 8, parameter bit ENABLE = 1, parameter logic [7:0] DATA = 8'hAA)(input clk); endmodule";
+        let modules = parse(input).unwrap();
+        assert_eq!(modules[0].parameters.len(), 3);
+        assert_eq!(modules[0].parameters[0].name, "WIDTH");
+        assert_eq!(modules[0].parameters[0].value, "8");
+        assert_eq!(modules[0].parameters[0].param_type, Some("int".to_string()));
+        assert_eq!(modules[0].parameters[1].name, "ENABLE");
+        assert_eq!(modules[0].parameters[1].value, "1");
+        assert_eq!(modules[0].parameters[1].param_type, Some("bit".to_string()));
+        assert_eq!(modules[0].parameters[2].name, "DATA");
+        assert_eq!(modules[0].parameters[2].value, "8'hAA");
+        assert_eq!(modules[0].parameters[2].param_type, Some("logic".to_string()));
+    }
+
+    #[test]
+    fn test_typed_parameters_signed() {
+        let input = "module signed_param #(parameter signed [31:0] OFFSET = 32'sh0)(input clk); endmodule";
+        let modules = parse(input).unwrap();
+        assert_eq!(modules[0].parameters.len(), 1);
+        assert_eq!(modules[0].parameters[0].name, "OFFSET");
+        assert_eq!(modules[0].parameters[0].param_type, Some("signed".to_string()));
+    }
+
+    // Issue 6: multiple variables per line
+    #[test]
+    fn test_multiple_vars_per_line() {
+        let input = "module multi_var(input wire ACLK, ARESETN, output [7:0] DATA, DOUT); endmodule";
+        let modules = parse(input).unwrap();
+        assert_eq!(modules[0].ports.len(), 4);
+        assert_eq!(modules[0].ports[0].name, "ACLK");
+        assert_eq!(modules[0].ports[0].direction, PortDirection::Input);
+        assert_eq!(modules[0].ports[0].port_type, Some(PortType::Wire));
+        assert_eq!(modules[0].ports[1].name, "ARESETN");
+        assert_eq!(modules[0].ports[1].direction, PortDirection::Input);
+        assert_eq!(modules[0].ports[1].port_type, Some(PortType::Wire));
+        assert_eq!(modules[0].ports[2].name, "DATA");
+        assert_eq!(modules[0].ports[2].direction, PortDirection::Output);
+        assert_eq!(modules[0].ports[2].dimensions.len(), 1);
+        assert_eq!(modules[0].ports[3].name, "DOUT");
+        assert_eq!(modules[0].ports[3].direction, PortDirection::Output);
+        assert_eq!(modules[0].ports[3].dimensions.len(), 1);
+    }
+
+    #[test]
+    fn test_multiple_vars_simple() {
+        let input = "module simple_multi(input clk, rst, output en); endmodule";
+        let modules = parse(input).unwrap();
+        assert_eq!(modules[0].ports.len(), 3);
+        assert_eq!(modules[0].ports[0].name, "clk");
+        assert_eq!(modules[0].ports[1].name, "rst");
+        assert_eq!(modules[0].ports[2].name, "en");
     }
 }

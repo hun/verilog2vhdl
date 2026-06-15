@@ -35,12 +35,15 @@ port_type = @{ "wire" | "reg" | "logic" | "wand" | "tri" | "triand" | "trior"
             | "integer" | "time"
             | "signed" | "unsigned" | "packed" }
 
+// Parameter type keywords (Verilog-2001 / SystemVerilog)
+parameter_type = @{ "int" | "bit" | "logic" | "signed" | "unsigned" }
+
 // Dimension [MSB:LSB]
 dimension = @{ "[" ~ dimension_expr ~ ":" ~ dimension_expr ~ "]" }
 dimension_expr = @{ (ASCII_ALPHANUMERIC | "_" | "-" | "+" | "*")+ }
 
-// Port declaration - leading comments explicitly handled
-port_decl = { COMMENT* ~ port_direction ~ port_type? ~ dimension* ~ identifier }
+// Port declaration - leading comments explicitly handled, supports multiple identifiers via negative lookahead
+port_decl = { COMMENT* ~ port_direction ~ port_type? ~ dimension* ~ identifier ~ (COMMENT* ~ "," ~ (!port_direction ~ identifier))* }
 
 // Port list (parenthesized) - comments can appear between ports
 port_list = { "(" ~ (port_decl ~ (COMMENT* ~ "," ~ port_decl)*)? ~ COMMENT* ~ ";"? ~ ")" }
@@ -48,8 +51,8 @@ port_list = { "(" ~ (port_decl ~ (COMMENT* ~ "," ~ port_decl)*)? ~ COMMENT* ~ ";
 // Parameter value - atomic, matches any characters except delimiters
 parameter_value = @{ (!"," ~ !")" ~ !"=" ~ ANY)+ }
 
-// Parameter declaration with optional leading comments
-parameter_decl = { COMMENT* ~ "parameter" ~ parameter_name ~ "=" ~ parameter_value }
+// Parameter declaration with optional leading comments, optional type, and optional dimensions
+parameter_decl = { COMMENT* ~ "parameter" ~ parameter_type? ~ dimension* ~ parameter_name ~ "=" ~ parameter_value }
 
 // Module parameters: #( param1, param2 )
 module_parameters = { "#" ~ "(" ~ parameter_list ~ ")" }

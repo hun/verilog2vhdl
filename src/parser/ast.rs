@@ -137,6 +137,10 @@ pub struct Parameter {
     pub name: String,
     /// Parameter value expression
     pub value: String,
+    /// Optional parameter type (int, bit, logic, signed, unsigned)
+    pub param_type: Option<String>,
+    /// Array dimensions if this is a vector parameter
+    pub dimensions: Vec<Dimension>,
     /// Comments that appear before this parameter
     pub leading_comments: Vec<Comment>,
 }

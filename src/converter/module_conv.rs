@@ -13,7 +13,36 @@ fn param_to_vhdl(param: &Parameter) -> String {
     } else {
         String::new()
     };
-    format!("{}{} : integer := {}", comment, param.name, param.value)
+
+    let vhdl_type = match (&param.param_type, param.dimensions.is_empty()) {
+        (Some(ptype), true) => match ptype.as_str() {
+            "int" => "integer".to_string(),
+            "bit" | "logic" => "std_logic".to_string(),
+            "signed" | "unsigned" => "integer".to_string(),
+            _ => "integer".to_string(),
+        },
+        (Some(ptype), false) => {
+            // Typed parameter with dimensions -> vector type
+            let range = if param.dimensions.len() == 1 {
+                let d = &param.dimensions[0];
+                format!("{} downto {}", d.msb, d.lsb)
+            } else {
+                // Multi-dimensional: use first dimension
+                let d = &param.dimensions[0];
+                format!("{} downto {}", d.msb, d.lsb)
+            };
+            match ptype.as_str() {
+                "signed" => format!("signed({})", range),
+                "unsigned" => format!("unsigned({})", range),
+                "logic" => format!("std_logic_vector({})", range),
+                "bit" => format!("std_logic_vector({})", range),
+                _ => format!("std_logic_vector({})", range),
+            }
+        }
+        (None, _) => "integer".to_string(),
+    };
+
+    format!("{}{} : {} := {}", comment, param.name, vhdl_type, param.value)
 }
 
 /// Generate the VHDL library and use clauses
