@@ -611,4 +611,66 @@ mod tests {
         assert_eq!(modules[0].ports.len(), 1);
         assert_eq!(modules[0].ports[0].name, "clk");
     }
+
+    #[test]
+    fn test_pre_module_default_nettype() {
+        let input = "default_nettype wire\nmodule test_mod(input a, output b); endmodule";
+        let modules = parse(input).unwrap();
+        assert_eq!(modules.len(), 1);
+        assert_eq!(modules[0].name, "test_mod");
+    }
+
+    #[test]
+    fn test_pre_module_include() {
+        let input = "`include \"defines.v\"\nmodule test_mod(input a, output b); endmodule";
+        let modules = parse(input).unwrap();
+        assert_eq!(modules.len(), 1);
+        assert_eq!(modules[0].name, "test_mod");
+    }
+
+    #[test]
+    fn test_post_module_trailing_text() {
+        let input = "module test_mod(input a, output b); endmodule\n// trailing comment\ndefault_nettype wire";
+        let modules = parse(input).unwrap();
+        assert_eq!(modules.len(), 1);
+        assert_eq!(modules[0].name, "test_mod");
+    }
+
+    #[test]
+    fn test_pre_and_post_module_content() {
+        let input = "/* Top comment */\ndefault_nettype wire\n`include \"defines.v\"\n\nmodule test_mod(input a, output b); endmodule\n\n// Trailing\n`ifdef SIMULATION\n`endif";
+        let modules = parse(input).unwrap();
+        assert_eq!(modules.len(), 1);
+        assert_eq!(modules[0].name, "test_mod");
+    }
+
+    #[test]
+    fn test_multiple_modules_with_garbage_between() {
+        let input = "default_nettype wire\nmodule mod_a(input a, output b); endmodule\nsome random text here\nmodule mod_b(input c, output d); endmodule\ntrailing stuff";
+        let modules = parse(input).unwrap();
+        assert_eq!(modules.len(), 2);
+        assert_eq!(modules[0].name, "mod_a");
+        assert_eq!(modules[1].name, "mod_b");
+    }
+
+    #[test]
+    fn test_pre_module_ifdef() {
+        let input = "`ifdef SIMULATION\n`define DEBUG\n`endif\n\nmodule test_mod(input clk); endmodule";
+        let modules = parse(input).unwrap();
+        assert_eq!(modules.len(), 1);
+        assert_eq!(modules[0].name, "test_mod");
+    }
+
+    #[test]
+    fn test_empty_file() {
+        let modules = parse("").unwrap();
+        assert_eq!(modules.len(), 0);
+    }
+
+    #[test]
+    fn test_only_comments_and_directives() {
+        let input = "// Just a comment\ndefault_nettype none\n/* block comment */";
+        let modules = parse(input).unwrap();
+        assert_eq!(modules.len(), 0);
+    }
 }

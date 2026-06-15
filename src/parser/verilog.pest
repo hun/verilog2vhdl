@@ -68,5 +68,11 @@ module_end_kw = { "endmodule" }
 // Body matches anything that is not the module_end keyword
 module_def = { module_header ~ (!module_end_kw ~ ANY)* ~ module_end_kw }
 
-// File can contain multiple modules
-file = { SOI ~ (module_def | COMMENT)* ~ EOI }
+// Pre/post-module content: anything that is not the start of a module_def.
+// module_def always starts with the literal "module", so we skip any character
+// that doesn't begin a "module" keyword.  This allows default_nettype,
+// `include, `ifdef, etc. before and after modules.
+pre_post_content = { !("module" ~ ANY*) ~ ANY }
+
+// File can contain multiple modules with arbitrary pre/post content
+file = { SOI ~ (module_def | COMMENT | pre_post_content)* ~ EOI }

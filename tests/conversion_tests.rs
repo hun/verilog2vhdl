@@ -50,3 +50,8 @@ fn test_signed_unsigned() {
 fn test_no_ports() {
     run_case("no_ports");
 }
+
+#[test]
+fn test_pre_post_content() {
+    run_case("pre_post_content");
+}
