@@ -22,8 +22,8 @@ pub enum Comment {
 impl fmt::Display for Comment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Comment::Line(text) => write!(f, "//{}", text),
-            Comment::Block(text) => write!(f, "/*{}*/", text),
+            Comment::Line(text) => write!(f, "{}", text),
+            Comment::Block(text) => write!(f, "{}", text),
         }
     }
 }

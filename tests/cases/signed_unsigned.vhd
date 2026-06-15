@@ -7,13 +7,13 @@ entity signed_unsigned is
         WIDTH : integer := 16
     );
     port (
-    -- //Signed input
+    -- Signed input
         a: in signed(WIDTH-1 downto 0);
-    -- //Unsigned input
+    -- Unsigned input
         b: in unsigned(WIDTH-1 downto 0);
-    -- //Signed result
+    -- Signed result
         sum: out signed(WIDTH-1 downto 0);
-    -- //Unsigned result
+    -- Unsigned result
         product: out unsigned(WIDTH-1 downto 0)
     );
 end entity signed_unsigned;

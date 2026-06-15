@@ -155,7 +155,7 @@ fn find_leading_comments(
 }
 
 /// Parse port tokens, extracting direction, type, dimensions, and all identifiers.
-/// Returns one Port per identifier found.
+/// Returns one Port per identifier found. Comments are attached by the caller.
 fn parse_port_from_tokens(tokens: Vec<Pair<'_, Rule>>, comments: &[(usize, usize, String)], port_start: usize, source: &str) -> Vec<Port> {
     let mut iter = tokens.into_iter();
 
@@ -208,28 +208,63 @@ fn parse_port_from_tokens(tokens: Vec<Pair<'_, Rule>>, comments: &[(usize, usize
 fn parse_port_list(pair: &Pair<'_, Rule>, source: &str, comments: &[(usize, usize, String)]) -> Vec<Port> {
     let inner_pairs: Vec<Pair<'_, Rule>> = pair.clone().into_inner().collect();
 
+    // Collect all port_decl pairs in order
+    let port_decls: Vec<Pair<'_, Rule>> = inner_pairs
+        .into_iter()
+        .filter(|p| p.as_rule() == Rule::port_decl)
+        .collect();
+
     let mut ports = Vec::new();
 
-    for pp in &inner_pairs {
-        if pp.as_rule() == Rule::port_decl {
-            let tokens: Vec<Pair<'_, Rule>> = pp.clone().into_inner().collect();
-            if !tokens.is_empty() {
-                let port_direction_pair = tokens
-                    .iter()
-                    .find(|t| t.as_rule() == Rule::port_direction)
-                    .expect("port_decl must have a port_direction token");
-                let port_start = port_direction_pair.as_span().start();
+    for (idx, pd) in port_decls.iter().enumerate() {
+        let tokens: Vec<Pair<'_, Rule>> = pd.clone().into_inner().collect();
+        if !tokens.is_empty() {
+            let port_direction_pair = tokens
+                .iter()
+                .find(|t| t.as_rule() == Rule::port_direction)
+                .expect("port_decl must have a port_direction token");
+            let port_start = port_direction_pair.as_span().start();
 
-                let mut port_list = parse_port_from_tokens(tokens, comments, port_start, source);
+            let mut port_list = parse_port_from_tokens(tokens.clone(), comments, port_start, source);
 
-                // Attach leading comments to each port
-                let leading_comments = find_leading_comments(comments, port_start, source);
-                for port in &mut port_list {
-                    port.leading_comments = leading_comments.clone();
-                }
-
-                ports.extend(port_list);
+            // Attach leading comments to each port
+            let leading_comments = find_leading_comments(comments, port_start, source);
+            for port in &mut port_list {
+                port.leading_comments = leading_comments.clone();
             }
+
+            // Attach inline comment: find the last identifier in this port_decl,
+            // then look for a comment that appears after it (before the next port or closing paren)
+            let last_id_end = tokens
+                .iter()
+                .filter(|t| t.as_rule() == Rule::identifier)
+                .last()
+                .map(|t| t.as_span().end())
+                .unwrap_or(port_start);
+
+            // Find the start of the next port_decl (or end of source if last port)
+            let next_port_start = port_decls
+                .get(idx + 1)
+                .map(|p| p.as_span().start())
+                .unwrap_or(source.len());
+
+            // Look for a comment between last_id_end and next_port_start
+            // that is on the same line as the last identifier (inline comment)
+            for &(cstart, _cend, ref ctext) in comments {
+                if cstart > last_id_end && cstart < next_port_start {
+                    // Check if this comment is on the same line as the last identifier
+                    let text_between = &source[last_id_end..cstart];
+                    if !text_between.contains('\n') {
+                        // This is an inline comment on the same line
+                        if let Some(last_port) = port_list.last_mut() {
+                            last_port.inline_comment = Some(parse_comment_text(ctext));
+                        }
+                        break;
+                    }
+                }
+            }
+
+            ports.extend(port_list);
         }
     }
 
@@ -777,5 +812,33 @@ mod tests {
         assert_eq!(modules[0].ports[0].name, "clk");
         assert_eq!(modules[0].ports[1].name, "rst");
         assert_eq!(modules[0].ports[2].name, "en");
+    }
+
+    // New tests for comments in port lists
+    #[test]
+    fn test_trailing_comment_in_port_list() {
+        // Trailing comment after last port in port list
+        let input = "module test(input wire clk, output reg [7:0] data  // trailing comment\n); endmodule";
+        let modules = parse(input).unwrap();
+        assert_eq!(modules.len(), 1);
+        assert_eq!(modules[0].ports.len(), 2);
+    }
+
+    #[test]
+    fn test_trailing_comment_multiline_ports() {
+        // Multiple port declarations on separate lines with comments between them
+        let input = "module test(\n    input wire clk,\n    // comment between ports\n    output reg [7:0] data  // trailing comment\n); endmodule";
+        let modules = parse(input).unwrap();
+        assert_eq!(modules.len(), 1);
+        assert_eq!(modules[0].ports.len(), 2);
+    }
+
+    #[test]
+    fn test_no_comma_between_ports() {
+        // No comma between port declarations (just newline + comment)
+        let input = "module test(\n    input wire clk\n    // comment between ports\n    output reg [7:0] data\n); endmodule";
+        let modules = parse(input).unwrap();
+        assert_eq!(modules.len(), 1);
+        assert_eq!(modules[0].ports.len(), 2);
     }
 }

@@ -42,11 +42,11 @@ parameter_type = @{ "int" | "bit" | "logic" | "signed" | "unsigned" }
 dimension = @{ "[" ~ dimension_expr ~ ":" ~ dimension_expr ~ "]" }
 dimension_expr = @{ (ASCII_ALPHANUMERIC | "_" | "-" | "+" | "*")+ }
 
-// Port declaration - leading comments explicitly handled, supports multiple identifiers via negative lookahead
-port_decl = { COMMENT* ~ port_direction ~ port_type? ~ dimension* ~ identifier ~ (COMMENT* ~ "," ~ (!port_direction ~ identifier))* }
+// Port declaration - trailing comments consumed
+port_decl = { port_direction ~ port_type? ~ dimension* ~ identifier ~ ("," ~ (!port_direction ~ identifier))* ~ COMMENT* }
 
-// Port list (parenthesized) - comments can appear between ports
-port_list = { "(" ~ (port_decl ~ (COMMENT* ~ "," ~ port_decl)*)? ~ COMMENT* ~ ";"? ~ ")" }
+// Port list (parenthesized) - comments between ports allowed
+port_list = { "(" ~ (port_decl ~ (COMMENT* ~ "," ~ COMMENT* ~ port_decl | COMMENT* ~ port_decl)*)? ~ ";"? ~ COMMENT* ~ ")" }
 
 // Parameter value - atomic, matches any characters except delimiters
 parameter_value = @{ (!"," ~ !")" ~ !"=" ~ ANY)+ }
