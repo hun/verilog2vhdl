@@ -40,7 +40,7 @@ parameter_type = @{ "int" | "bit" | "logic" | "signed" | "unsigned" }
 
 // Dimension [MSB:LSB]
 dimension = @{ "[" ~ dimension_expr ~ ":" ~ dimension_expr ~ "]" }
-dimension_expr = @{ (ASCII_ALPHANUMERIC | "_" | "-" | "+" | "*")+ }
+dimension_expr = @{ (ASCII_ALPHANUMERIC | "_" | "-" | "+" | "*" | " ")+ }
 
 // Port declaration - trailing comments consumed
 port_decl = { port_direction ~ port_type? ~ dimension* ~ identifier ~ ("," ~ (!port_direction ~ identifier))* ~ COMMENT* }

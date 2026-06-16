@@ -841,4 +841,23 @@ mod tests {
         assert_eq!(modules.len(), 1);
         assert_eq!(modules[0].ports.len(), 2);
     }
+
+    #[test]
+    fn test_dimension_with_spaces() {
+        // Dimension expressions may have extra spaces (e.g., [WIDTH  :0])
+        let input = "module spaced_dim(input [WIDTH  :0] a, output [7:0] b); endmodule";
+        let modules = parse(input).unwrap();
+        assert_eq!(modules[0].ports[0].dimensions[0].msb, "WIDTH");
+        assert_eq!(modules[0].ports[0].dimensions[0].lsb, "0");
+    }
+
+    #[test]
+    fn test_comments_in_body() {
+        // Comments in module body (e.g., between port connections in instantiations)
+        let input = "module test(input a, output b);
+    // comment in body
+endmodule";
+        let modules = parse(input).unwrap();
+        assert_eq!(modules[0].name, "test");
+    }
 }
