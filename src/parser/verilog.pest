@@ -1,12 +1,14 @@
 // Verilog/SystemVerilog grammar for verilog2vhdl
-
-// Comments - NOT consumed by WHITESPACE; handled explicitly
-LINE_COMMENT = { "//" ~ (!( "\n" | "\r") ~ ANY)* }
-BLOCK_COMMENT = { "/*" ~ (!( "*/") ~ ANY)* ~ "*/" }
-COMMENT = { LINE_COMMENT | BLOCK_COMMENT }
+// Comments are extracted by the lexer (lexer.rs) using pest's grammar.
+// The structural parser rules reference COMMENT to consume them silently.
 
 // Whitespace only
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+
+// Comment rules
+LINE_COMMENT = { "//" ~ (!( "\n" | "\r") ~ ANY)* }
+BLOCK_COMMENT = { "/*" ~ (!( "*/") ~ ANY)* ~ "*/" }
+COMMENT = { LINE_COMMENT | BLOCK_COMMENT }
 
 // Keywords
 identifier = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_" )* }

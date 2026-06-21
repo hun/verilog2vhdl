@@ -6,6 +6,7 @@ use pest_derive::Parser;
 use thiserror::Error;
 
 use super::ast::*;
+use super::lexer::extract_comments;
 
 /// Errors that can occur during parsing
 #[derive(Error, Debug)]
@@ -22,21 +23,6 @@ pub struct VerilogParser;
 /// Extract text content from a pest::Pair, stripping whitespace
 fn pair_text(pair: &Pair<'_, Rule>) -> String {
     pair.as_str().trim().to_string()
-}
-
-/// Parse a comment token into a Comment AST node
-fn parse_comment_text(text: &str) -> Comment {
-    if text.starts_with("//") {
-        // Strip the // prefix and trim
-        let content = text[2..].trim().to_string();
-        Comment::Line(content)
-    } else if text.starts_with("/*") && text.ends_with("*/") {
-        // Strip /* and */ prefixes
-        let content = &text[2..text.len() - 2];
-        Comment::Block(content.trim().to_string())
-    } else {
-        Comment::Line(text.trim().to_string())
-    }
 }
 
 /// Parse a dimension [MSB:LSB] - dimension is atomic, so strip brackets and split
@@ -88,65 +74,28 @@ fn parse_port_type(text: &str) -> PortType {
     }
 }
 
-/// Extract comments from source text with their byte positions
-fn extract_comments(source: &str) -> Vec<(usize, usize, String)> {
-    // Returns (start_byte, end_byte, comment_text)
-    let mut comments = Vec::new();
-    let mut pos = 0;
-
-    while pos < source.len() {
-        if source[pos..].starts_with("//") {
-            // Line comment: find end of line
-            let start = pos + 2;
-            let end = source[start..]
-                .find('\n')
-                .map(|i| start + i)
-                .unwrap_or(source.len());
-            let content = source[start..end].trim().to_string();
-            comments.push((pos, end, format!("//{}", content)));
-            pos = end;
-            continue;
-        } else if source[pos..].starts_with("/*") {
-            // Block comment: find */
-            if let Some(end_tag) = source[pos + 2..].find("*/") {
-                let end = pos + 2 + end_tag + 2;
-                let content = source[pos + 2..end - 2].trim().to_string();
-                comments.push((pos, end, format!("/*{}*/", content)));
-                pos = end;
-                continue;
-            }
-        }
-        pos += 1;
-    }
-    comments
-}
-
 /// Find leading comments that appear immediately before a position in the source
 fn find_leading_comments(
-    comments: &[(usize, usize, String)],
+    comments: &[(usize, usize, Comment)],
     port_start: usize,
     source: &str,
 ) -> Vec<Comment> {
-    // Comments that end before the port starts, and are within reasonable proximity
     let mut result = Vec::new();
     let mut found = false;
 
     // Iterate backwards from the port start to find the closest comments
-    for &(_start, end, ref text) in comments.iter().rev() {
-        if end >= port_start {
-            // This comment starts at or after the port - skip
+    for &(_, comment_end, ref comment) in comments.iter().rev() {
+        if comment_end > port_start {
             continue;
         }
-        // Check if there's only whitespace between this comment and the port
-        let gap = &source[end..port_start];
+        let gap = &source[comment_end..port_start];
         if !gap.trim().is_empty() {
-            // There's non-whitespace between them - stop looking
             if found {
                 break;
             }
             continue;
         }
-        result.push(parse_comment_text(text));
+        result.push(comment.clone());
         found = true;
     }
 
@@ -156,7 +105,7 @@ fn find_leading_comments(
 
 /// Parse port tokens, extracting direction, type, dimensions, and all identifiers.
 /// Returns one Port per identifier found. Comments are attached by the caller.
-fn parse_port_from_tokens(tokens: Vec<Pair<'_, Rule>>, comments: &[(usize, usize, String)], port_start: usize, source: &str) -> Vec<Port> {
+fn parse_port_from_tokens(tokens: Vec<Pair<'_, Rule>>) -> Vec<Port> {
     let mut iter = tokens.into_iter();
 
     // First token is the direction keyword
@@ -185,9 +134,6 @@ fn parse_port_from_tokens(tokens: Vec<Pair<'_, Rule>>, comments: &[(usize, usize
         }
     }
 
-    // Extract leading comments from source text based on position
-    let _leading_comments = find_leading_comments(comments, port_start, source);
-
     // Create one Port per identifier
     names
         .into_iter()
@@ -203,9 +149,9 @@ fn parse_port_from_tokens(tokens: Vec<Pair<'_, Rule>>, comments: &[(usize, usize
         .collect()
 }
 
-/// Parse the port list, extracting comments from source text for each port
+/// Parse the port list, attaching comments from source text for each port
 /// and handling multiple variables per line (e.g., "input wire ACLK, ARESETN").
-fn parse_port_list(pair: &Pair<'_, Rule>, source: &str, comments: &[(usize, usize, String)]) -> Vec<Port> {
+fn parse_port_list(pair: &Pair<'_, Rule>, source: &str, comments: &[(usize, usize, Comment)]) -> Vec<Port> {
     let inner_pairs: Vec<Pair<'_, Rule>> = pair.clone().into_inner().collect();
 
     // Collect all port_decl pairs in order
@@ -225,7 +171,7 @@ fn parse_port_list(pair: &Pair<'_, Rule>, source: &str, comments: &[(usize, usiz
                 .expect("port_decl must have a port_direction token");
             let port_start = port_direction_pair.as_span().start();
 
-            let mut port_list = parse_port_from_tokens(tokens.clone(), comments, port_start, source);
+            let mut port_list = parse_port_from_tokens(tokens.clone());
 
             // Attach leading comments to each port
             let leading_comments = find_leading_comments(comments, port_start, source);
@@ -250,14 +196,14 @@ fn parse_port_list(pair: &Pair<'_, Rule>, source: &str, comments: &[(usize, usiz
 
             // Look for a comment between last_id_end and next_port_start
             // that is on the same line as the last identifier (inline comment)
-            for &(cstart, _cend, ref ctext) in comments {
+            for &(cstart, _, ref comment) in comments {
                 if cstart > last_id_end && cstart < next_port_start {
                     // Check if this comment is on the same line as the last identifier
                     let text_between = &source[last_id_end..cstart];
                     if !text_between.contains('\n') {
                         // This is an inline comment on the same line
                         if let Some(last_port) = port_list.last_mut() {
-                            last_port.inline_comment = Some(parse_comment_text(ctext));
+                            last_port.inline_comment = Some(comment.clone());
                         }
                         break;
                     }
@@ -272,7 +218,7 @@ fn parse_port_list(pair: &Pair<'_, Rule>, source: &str, comments: &[(usize, usiz
 }
 
 /// Parse a complete module definition
-fn parse_module_def(pair: Pair<'_, Rule>, source: &str, comments: &[(usize, usize, String)]) -> Module {
+fn parse_module_def(pair: Pair<'_, Rule>, source: &str, comments: &[(usize, usize, Comment)]) -> Module {
     let inner: Vec<Pair<'_, Rule>> = pair.into_inner().collect();
 
     // Find module_header
@@ -305,7 +251,7 @@ fn parse_module_def(pair: Pair<'_, Rule>, source: &str, comments: &[(usize, usiz
             let mut params = Vec::new();
             for param_pair in pl.into_inner() {
                 if param_pair.as_rule() == Rule::parameter_decl {
-                    let inner_tokens: Vec<Pair<'_, Rule>> = param_pair.into_inner().collect();
+                    let inner_tokens: Vec<Pair<'_, Rule>> = param_pair.clone().into_inner().collect();
                     // First tokens may be COMMENT tokens (leading comments)
                     let mut leading_comments = Vec::new();
                     let mut value_start = 0;
@@ -314,7 +260,7 @@ fn parse_module_def(pair: Pair<'_, Rule>, source: &str, comments: &[(usize, usiz
                     let mut seen_type = false;
                     for (i, token) in inner_tokens.iter().enumerate() {
                         if token.as_rule() == Rule::COMMENT {
-                            leading_comments.push(parse_comment_text(token.as_str()));
+                            leading_comments.push(super::lexer::parse_comment_text(token.as_str()));
                         } else if !seen_type && token.as_rule() == Rule::parameter_type {
                             param_type = Some(pair_text(token));
                             seen_type = true;
