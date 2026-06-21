@@ -3,13 +3,6 @@
 
 use std::fmt;
 
-/// Represents a source code span (line numbers, etc.)
-#[derive(Debug, Clone)]
-pub struct Span {
-    pub line: usize,
-    pub column: usize,
-}
-
 /// A comment found in the source
 #[derive(Debug, Clone)]
 pub enum Comment {

@@ -13,6 +13,8 @@ use super::lexer::extract_comments;
 pub enum ParseError {
     #[error("Parse error: {0}")]
     Parse(#[from] pest::error::Error<Rule>),
+    #[error("Unsupported port keyword: {0}")]
+    UnsupportedPortKeyword(String),
 }
 
 /// The Pest grammar
@@ -37,40 +39,40 @@ fn parse_dimension(pair: Pair<'_, Rule>) -> Dimension {
 }
 
 /// Parse port direction
-fn parse_direction(text: &str) -> PortDirection {
+fn parse_direction(text: &str) -> Result<PortDirection, String> {
     match text {
-        "input" => PortDirection::Input,
-        "output" => PortDirection::Output,
-        "inout" => PortDirection::Inout,
-        "ref" => PortDirection::Ref,
-        "const ref" => PortDirection::ConstRef,
-        "output ref" => PortDirection::OutputRef,
-        "inout ref" => PortDirection::InoutRef,
-        "input ref" => PortDirection::Ref, // SV input ref maps to Ref
-        _ => panic!("Unknown direction: {}", text),
+        "input" => Ok(PortDirection::Input),
+        "output" => Ok(PortDirection::Output),
+        "inout" => Ok(PortDirection::Inout),
+        "ref" => Ok(PortDirection::Ref),
+        "const ref" => Ok(PortDirection::ConstRef),
+        "output ref" => Ok(PortDirection::OutputRef),
+        "inout ref" => Ok(PortDirection::InoutRef),
+        "input ref" => Ok(PortDirection::Ref), // SV input ref maps to Ref
+        _ => Err(text.to_string()),
     }
 }
 
 /// Parse port type
-fn parse_port_type(text: &str) -> PortType {
+fn parse_port_type(text: &str) -> Result<PortType, String> {
     match text {
-        "wire" => PortType::Wire,
-        "reg" => PortType::Reg,
-        "logic" => PortType::Logic,
-        "wand" => PortType::Wand,
-        "tri" => PortType::Tri,
-        "triand" => PortType::Triand,
-        "trior" => PortType::Trior,
-        "tri0" => PortType::Tri0,
-        "tri1" => PortType::Tri1,
-        "supply0" => PortType::Supply0,
-        "supply1" => PortType::Supply1,
-        "integer" => PortType::Integer,
-        "time" => PortType::Time,
-        "signed" => PortType::Signed,
-        "unsigned" => PortType::Unsigned,
-        "packed" => PortType::Packed,
-        _ => panic!("Unknown port type: {}", text),
+        "wire" => Ok(PortType::Wire),
+        "reg" => Ok(PortType::Reg),
+        "logic" => Ok(PortType::Logic),
+        "wand" => Ok(PortType::Wand),
+        "tri" => Ok(PortType::Tri),
+        "triand" => Ok(PortType::Triand),
+        "trior" => Ok(PortType::Trior),
+        "tri0" => Ok(PortType::Tri0),
+        "tri1" => Ok(PortType::Tri1),
+        "supply0" => Ok(PortType::Supply0),
+        "supply1" => Ok(PortType::Supply1),
+        "integer" => Ok(PortType::Integer),
+        "time" => Ok(PortType::Time),
+        "signed" => Ok(PortType::Signed),
+        "unsigned" => Ok(PortType::Unsigned),
+        "packed" => Ok(PortType::Packed),
+        _ => Err(text.to_string()),
     }
 }
 
@@ -105,12 +107,12 @@ fn find_leading_comments(
 
 /// Parse port tokens, extracting direction, type, dimensions, and all identifiers.
 /// Returns one Port per identifier found. Comments are attached by the caller.
-fn parse_port_from_tokens(tokens: Vec<Pair<'_, Rule>>) -> Vec<Port> {
+fn parse_port_from_tokens(tokens: Vec<Pair<'_, Rule>>) -> Result<Vec<Port>, String> {
     let mut iter = tokens.into_iter();
 
     // First token is the direction keyword
     let direction_text = pair_text(&iter.next().unwrap());
-    let direction = parse_direction(&direction_text);
+    let direction = parse_direction(&direction_text)?;
 
     let mut port_type: Option<PortType> = None;
     let mut dimensions = Vec::new();
@@ -119,7 +121,7 @@ fn parse_port_from_tokens(tokens: Vec<Pair<'_, Rule>>) -> Vec<Port> {
     for token in iter {
         match token.as_rule() {
             Rule::port_type => {
-                port_type = Some(parse_port_type(&pair_text(&token)));
+                port_type = Some(parse_port_type(&pair_text(&token))?);
             }
             Rule::dimension => {
                 dimensions.push(parse_dimension(token));
@@ -135,7 +137,7 @@ fn parse_port_from_tokens(tokens: Vec<Pair<'_, Rule>>) -> Vec<Port> {
     }
 
     // Create one Port per identifier
-    names
+    Ok(names
         .into_iter()
         .map(|name| Port {
             name,
@@ -146,12 +148,12 @@ fn parse_port_from_tokens(tokens: Vec<Pair<'_, Rule>>) -> Vec<Port> {
             inline_comment: None,
             trailing_comments: Vec::new(),
         })
-        .collect()
+        .collect())
 }
 
 /// Parse the port list, attaching comments from source text for each port
 /// and handling multiple variables per line (e.g., "input wire ACLK, ARESETN").
-fn parse_port_list(pair: &Pair<'_, Rule>, source: &str, comments: &[(usize, usize, Comment)]) -> Vec<Port> {
+fn parse_port_list_inner(pair: &Pair<'_, Rule>, source: &str, comments: &[(usize, usize, Comment)]) -> Result<Vec<Port>, String> {
     let inner_pairs: Vec<Pair<'_, Rule>> = pair.clone().into_inner().collect();
 
     // Collect all port_decl pairs in order
@@ -174,7 +176,7 @@ fn parse_port_list(pair: &Pair<'_, Rule>, source: &str, comments: &[(usize, usiz
             };
             let port_start = port_direction_pair.as_span().start();
 
-            let mut port_list = parse_port_from_tokens(tokens.clone());
+            let mut port_list = parse_port_from_tokens(tokens.clone())?;
 
             // Attach leading comments to each port
             let leading_comments = find_leading_comments(comments, port_start, source);
@@ -217,11 +219,21 @@ fn parse_port_list(pair: &Pair<'_, Rule>, source: &str, comments: &[(usize, usiz
         }
     }
 
-    ports
+    Ok(ports)
+}
+
+/// Parse the port list from a module header, handling the optional port list
+fn parse_port_list(pair: &Pair<'_, Rule>, source: &str, comments: &[(usize, usize, Comment)]) -> Result<Vec<Port>, String> {
+    let inner_pairs: Vec<Pair<'_, Rule>> = pair.clone().into_inner().collect();
+    let has_decl = inner_pairs.iter().any(|p| p.as_rule() == Rule::port_decl);
+    if !has_decl {
+        return Ok(Vec::new());
+    }
+    parse_port_list_inner(pair, source, comments)
 }
 
 /// Parse a complete module definition
-fn parse_module_def(pair: Pair<'_, Rule>, source: &str, comments: &[(usize, usize, Comment)]) -> Module {
+fn parse_module_def(pair: Pair<'_, Rule>, source: &str, comments: &[(usize, usize, Comment)]) -> Result<Module, String> {
     let inner: Vec<Pair<'_, Rule>> = pair.into_inner().collect();
 
     // Find module_header
@@ -312,20 +324,22 @@ fn parse_module_def(pair: Pair<'_, Rule>, source: &str, comments: &[(usize, usiz
         .unwrap_or_default();
 
     // Parse port list from header, associating comments from source text
-    let ports: Vec<Port> = header
-        .clone()
-        .into_inner()
-        .find(|p: &Pair<'_, Rule>| p.as_rule() == Rule::port_list)
-        .map(|p: Pair<'_, Rule>| parse_port_list(&p, source, comments))
-        .unwrap_or_default();
+    let ports: Vec<Port> = {
+        let port_list_pair = header
+            .clone()
+            .into_inner()
+            .find(|p: &Pair<'_, Rule>| p.as_rule() == Rule::port_list)
+            .ok_or_else(|| "missing port list".to_string())?;
+        parse_port_list(&port_list_pair, source, comments)?
+    };
 
-    Module {
+    Ok(Module {
         name,
         parameters: params,
         ports,
         header_comments: Vec::new(),
         body_comments: Vec::new(),
-    }
+    })
 }
 
 /// Parse the entire file - extracts all modules
@@ -338,7 +352,13 @@ pub fn parse(input: &str) -> Result<Vec<Module>, ParseError> {
             file_pair
                 .into_inner()
                 .filter(|p: &Pair<'_, Rule>| p.as_rule() == Rule::module_def)
-                .map(|pair| parse_module_def(pair, input, &comments))
+                .filter_map(|pair| match parse_module_def(pair, input, &comments) {
+                    Ok(m) => Some(m),
+                    Err(e) => {
+                        eprintln!("Warning: skipping module due to parse error: {}", e);
+                        None
+                    }
+                })
                 .collect::<Vec<Module>>()
         })
         .collect();

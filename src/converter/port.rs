@@ -23,9 +23,3 @@ pub fn port_to_vhdl(port: &Port) -> String {
 
     format!("{}: {} {}", port.name, vhdl_dir, type_str)
 }
-
-/// Convert port direction to VHDL direction string (for generic use)
-#[allow(dead_code)]
-pub fn direction_to_string(direction: &PortDirection) -> String {
-    direction_to_vhdl(direction).to_string()
-}
