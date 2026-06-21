@@ -4,13 +4,13 @@ use ieee.numeric_std.all;
 
 entity pre_post_content is
     port (
-    -- Clock signal
+        -- Clock signal
         clk: in std_logic;
-    -- Reset signal (active low)
+        -- Reset signal (active low)
         rst_n: in std_logic;
-    -- Input data
+        -- Input data
         data_in: in std_logic_vector(7 downto 0);
-    -- Output data
+        -- Output data
         data_out: out std_logic_vector(7 downto 0)
     );
 end entity pre_post_content;

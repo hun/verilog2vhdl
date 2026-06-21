@@ -221,7 +221,7 @@ end entity fifo;
 | New-style ports (`input [7:0] a`) | Yes |
 | Port directions (`in`, `out`, `inout`, `ref`) | Yes |
 | Types (`wire`, `reg`, `logic`, `signed`, `unsigned`) | Yes |
-| Multi-dimensional arrays | Yes |
+| Multi-dimensional arrays | No (first dimension only; multi-dim types are not portable across VHDL toolchains) |
 | Module parameters -> VHDL generics | Yes |
 | Comments (leading port/param comments) | Yes |
 | Multiple modules per file | Yes |
@@ -245,7 +245,7 @@ cargo test --lib
 cargo test --test conversion_tests
 ```
 
-28 tests total: 23 parser unit tests + 5 integration tests.
+314 tests total: 49 unit tests (parser) + 259 parse-only integration tests + 6 full conversion tests.
 
 ## Architecture
 

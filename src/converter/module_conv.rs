@@ -7,9 +7,9 @@ use super::port::port_to_vhdl;
 fn param_to_vhdl(param: &Parameter) -> String {
     let comment = if !param.leading_comments.is_empty() {
         let comments: Vec<String> = param.leading_comments.iter()
-            .map(|c| format!("-- {}", c))
+            .map(|c| format!("        -- {}", c))
             .collect();
-        comments.join("\n") + "\n        "
+        comments.join("\n") + "\n"
     } else {
         String::new()
     };
@@ -75,7 +75,7 @@ pub fn entity_only(module: &Module) -> String {
     for (i, port) in module.ports.iter().enumerate() {
         let comment = if !port.leading_comments.is_empty() {
             let comments: Vec<String> = port.leading_comments.iter()
-                .map(|c| format!("    -- {}", c))
+                .map(|c| format!("        -- {}", c))
                 .collect();
             comments.join("\n") + "\n"
         } else {

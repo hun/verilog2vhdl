@@ -4,15 +4,15 @@ use ieee.numeric_std.all;
 
 entity simple_adder is
     port (
-    -- Clock signal
+        -- Clock signal
         clk: in std_logic;
-    -- Reset signal (active low)
+        -- Reset signal (active low)
         rst_n: in std_logic;
-    -- Input A
+        -- Input A
         a: in std_logic_vector(7 downto 0);
-    -- Input B
+        -- Input B
         b: in std_logic_vector(7 downto 0);
-    -- Sum output
+        -- Sum output
         sum: out std_logic_vector(7 downto 0)
     );
 end entity simple_adder;
