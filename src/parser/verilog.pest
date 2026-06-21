@@ -11,8 +11,8 @@ BLOCK_COMMENT = { "/*" ~ (!( "*/") ~ ANY)* ~ "*/" }
 COMMENT = { LINE_COMMENT | BLOCK_COMMENT }
 
 // Keywords
-identifier = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_" )* }
-parameter_name = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_" )* }
+identifier = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+parameter_name = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 
 // Numbers
 number_literal = @{ ("0" ~ ("b" | "B") ~ ASCII_HEX_DIGIT+)
@@ -44,14 +44,14 @@ parameter_type = @{ "int" | "bit" | "logic" | "signed" | "unsigned" }
 dimension = @{ "[" ~ dimension_expr ~ ":" ~ dimension_expr ~ "]" }
 dimension_expr = @{ (ASCII_ALPHANUMERIC | "_" | "-" | "+" | "*" | " ")+ }
 
-// Port declaration - trailing comments consumed
-port_decl = { port_direction ~ port_type? ~ dimension* ~ identifier ~ ("," ~ (!port_direction ~ identifier))* ~ COMMENT* }
+// Port declaration - handles both port declarations and inline parameter declarations
+port_decl = { parameter_decl | port_direction ~ port_type? ~ dimension* ~ identifier ~ ("," ~ (!port_direction ~ identifier))* ~ COMMENT* }
 
 // Port list (parenthesized) - comments between ports allowed
 port_list = { "(" ~ (port_decl ~ (COMMENT* ~ "," ~ COMMENT* ~ port_decl | COMMENT* ~ port_decl)*)? ~ ";"? ~ COMMENT* ~ ")" }
 
-// Parameter value - atomic, matches any characters except delimiters
-parameter_value = @{ (!"," ~ !")" ~ !"=" ~ ANY)+ }
+// Parameter value - atomic, matches any characters except delimiters; optional (empty value allowed)
+parameter_value = @{ (!"," ~ !")" ~ !"/" ~ ANY)* }
 
 // Parameter declaration with optional leading comments, optional type, and optional dimensions
 parameter_decl = { COMMENT* ~ "parameter" ~ parameter_type? ~ dimension* ~ parameter_name ~ "=" ~ parameter_value }
@@ -60,18 +60,24 @@ parameter_decl = { COMMENT* ~ "parameter" ~ parameter_type? ~ dimension* ~ param
 module_parameters = { "#" ~ "(" ~ parameter_list ~ ")" }
 
 // Parameter list (supports both { param; param } and ( param, param ))
+// Also supports shorthand: parameter NAME = VAL, OTHER_NAME = VAL
 parameter_list = { ("{" ~ parameter_decl ~ (("," ~ parameter_decl) | (";" ~ parameter_decl))* ~ "}")
-                | (parameter_decl ~ ("," ~ parameter_decl)* ) }
+                | (parameter_decl ~ ("," ~ (parameter_decl | parameter_shorthand))*) }
 
-// Module header with optional leading comments and optional semicolon
-module_header = { COMMENT* ~ "module" ~ identifier ~ module_parameters? ~ port_list ~ ";"? }
+// Parameter shorthand: NAME = VALUE (without the "parameter" keyword)
+parameter_shorthand = { parameter_name ~ "=" ~ parameter_value }
+
+// Module header with optional leading comments, optional module parameters, optional port list, and optional semicolon
+module_header = { COMMENT* ~ "module" ~ identifier ~ module_parameters? ~ port_list? ~ ";"? }
 
 // Module end keyword (Verilog-2001 standard)
 module_end_kw = { "endmodule" }
 
 // Module definition - use a non-consuming approach for body
-// Body matches anything that is not the module_end keyword
-module_def = { module_header ~ (!module_end_kw ~ ANY)* ~ module_end_kw }
+// Body matches any character except the start of endmodule
+// Comments inside module bodies are skipped (handled by lexer separately)
+module_def = { module_header ~ module_body ~ module_end_kw }
+module_body = @{ (!module_end_kw ~ ANY)* }
 
 // Pre/post-module content: anything that is not the start of a module_def.
 // module_def always starts with the literal "module", so we skip any character

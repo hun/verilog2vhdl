@@ -165,10 +165,13 @@ fn parse_port_list(pair: &Pair<'_, Rule>, source: &str, comments: &[(usize, usiz
     for (idx, pd) in port_decls.iter().enumerate() {
         let tokens: Vec<Pair<'_, Rule>> = pd.clone().into_inner().collect();
         if !tokens.is_empty() {
+            // Skip parameter declarations (they have no port_direction)
             let port_direction_pair = tokens
                 .iter()
-                .find(|t| t.as_rule() == Rule::port_direction)
-                .expect("port_decl must have a port_direction token");
+                .find(|t| t.as_rule() == Rule::port_direction);
+            let Some(port_direction_pair) = port_direction_pair else {
+                continue;
+            };
             let port_start = port_direction_pair.as_span().start();
 
             let mut port_list = parse_port_from_tokens(tokens.clone());
@@ -288,6 +291,19 @@ fn parse_module_def(pair: Pair<'_, Rule>, source: &str, comments: &[(usize, usiz
                         param_type,
                         dimensions,
                         leading_comments,
+                    });
+                } else if param_pair.as_rule() == Rule::parameter_shorthand {
+                    // Handle shorthand: NAME = VALUE (without "parameter" keyword)
+                    let inner_tokens: Vec<Pair<'_, Rule>> = param_pair.clone().into_inner().collect();
+                    let mut non_comment = inner_tokens.into_iter();
+                    let pname = pair_text(&non_comment.next().unwrap());
+                    let pvalue = pair_text(&non_comment.next().unwrap());
+                    params.push(Parameter {
+                        name: pname,
+                        value: pvalue,
+                        param_type: None,
+                        dimensions: Vec::new(),
+                        leading_comments: Vec::new(),
                     });
                 }
             }
