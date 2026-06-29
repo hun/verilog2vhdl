@@ -5,6 +5,9 @@
 // Whitespace only
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
 
+// Empty rule for optional empty parameter list #( )
+EMPTY = _{ "" }
+
 // Comment rules
 LINE_COMMENT = { "//" ~ (!( "\n" | "\r") ~ ANY)* }
 BLOCK_COMMENT = { "/*" ~ (!( "*/") ~ ANY)* ~ "*/" }
@@ -56,13 +59,13 @@ parameter_value = @{ (!"," ~ !")" ~ !"/" ~ ANY)* }
 // Parameter declaration with optional leading comments, optional type, and optional dimensions
 parameter_decl = { COMMENT* ~ "parameter" ~ parameter_type? ~ dimension* ~ parameter_name ~ "=" ~ parameter_value }
 
-// Module parameters: #( param1, param2 )
-module_parameters = { "#" ~ "(" ~ parameter_list ~ ")" }
+// Module parameters: #( param1, param2 ) or #( ) (empty, common in SystemVerilog)
+module_parameters = { "#" ~ "(" ~ (parameter_list | EMPTY) ~ ")" }
 
 // Parameter list (supports both { param; param } and ( param, param ))
 // Also supports shorthand: parameter NAME = VAL, OTHER_NAME = VAL
-parameter_list = { ("{" ~ parameter_decl ~ (("," ~ parameter_decl) | (";" ~ parameter_decl))* ~ "}")
-                | (parameter_decl ~ ("," ~ (parameter_decl | parameter_shorthand))*) }
+parameter_list = { ( "{" ~ parameter_decl ~ (( "," ~ parameter_decl) | ( ";" ~ parameter_decl))* ~ "}")
+                | (parameter_decl ~ ( "," ~ (parameter_decl | parameter_shorthand))* ) }
 
 // Parameter shorthand: NAME = VALUE (without the "parameter" keyword)
 parameter_shorthand = { parameter_name ~ "=" ~ parameter_value }
